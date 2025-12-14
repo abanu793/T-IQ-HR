@@ -1,121 +1,104 @@
 import os
 import pandas as pd
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
-from tensorflow.keras.optimizers import Adam
+import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 # -----------------------
-# CONFIGURATION
+# CONFIG
 # -----------------------
-DATA_DIR = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images"
-IMG_HEIGHT, IMG_WIDTH = 128, 128
+CSV_PATH = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\resume_images_labels.csv"
+IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
 EPOCHS = 10
-MODEL_SAVE_PATH = r"C:\Users\abanu\Documents\t_iq_hr\models\resume_cnn.h5"
+MODEL_OUT = r"C:\Users\abanu\Documents\resume_cnn_v2.keras"
+
+
+os.makedirs(MODEL_OUT, exist_ok=True)
 
 # -----------------------
 # LOAD DATA
 # -----------------------
-# Option 1: Use CSV
-csv_path = os.path.join(DATA_DIR, "resume_images_labels.csv")
-df = pd.read_csv(csv_path)
+df = pd.read_csv(CSV_PATH)
 
-# Split train/test
+df["label"] = df["label"].map({"real": 0, "fake": 1})
+
 train_df, val_df = train_test_split(
     df, test_size=0.2, stratify=df["label"], random_state=42
 )
 
+
 # -----------------------
-# IMAGE GENERATORS
+# IMAGE LOADER
 # -----------------------
-train_datagen = ImageDataGenerator(
-    rescale=1.0 / 255,
-    rotation_range=10,
-    width_shift_range=0.1,
-    height_shift_range=0.1,
-    horizontal_flip=True,
+def load_image(path, label):
+    img = tf.io.read_file(path)
+    img = tf.image.decode_png(img, channels=3)
+    img = tf.image.resize(img, IMG_SIZE)
+    img = img / 255.0
+    return img, label
+
+
+def make_dataset(dataframe, shuffle=True):
+    ds = tf.data.Dataset.from_tensor_slices(
+        (dataframe["image_path"].values, dataframe["label"].values)
+    )
+    ds = ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
+    if shuffle:
+        ds = ds.shuffle(1000)
+    return ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+
+train_ds = make_dataset(train_df)
+val_ds = make_dataset(val_df, shuffle=False)
+
+# -----------------------
+# CLASS WEIGHTS
+# -----------------------
+weights = compute_class_weight(
+    class_weight="balanced", classes=np.array([0, 1]), y=train_df["label"].values
+)
+class_weights = {0: weights[0], 1: weights[1]}
+
+print("Class weights:", class_weights)
+
+# -----------------------
+# MODEL
+# -----------------------
+base = tf.keras.applications.EfficientNetB0(
+    include_top=False, weights="imagenet", input_shape=(*IMG_SIZE, 3)
 )
 
-val_datagen = ImageDataGenerator(rescale=1.0 / 255)
+base.trainable = False
 
-train_gen = train_datagen.flow_from_dataframe(
-    dataframe=train_df,
-    x_col="image_path",
-    y_col="label",
-    target_size=(IMG_HEIGHT, IMG_WIDTH),
-    color_mode="rgb",
-    class_mode="binary",
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-)
-
-val_gen = val_datagen.flow_from_dataframe(
-    dataframe=val_df,
-    x_col="image_path",
-    y_col="label",
-    target_size=(IMG_HEIGHT, IMG_WIDTH),
-    color_mode="rgb",
-    class_mode="binary",
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-)
-
-# -----------------------
-# BUILD CNN MODEL
-# -----------------------
-model = Sequential(
+model = tf.keras.Sequential(
     [
-        Conv2D(32, (3, 3), activation="relu", input_shape=(IMG_HEIGHT, IMG_WIDTH, 3)),
-        MaxPooling2D((2, 2)),
-        Conv2D(64, (3, 3), activation="relu"),
-        MaxPooling2D((2, 2)),
-        Conv2D(128, (3, 3), activation="relu"),
-        MaxPooling2D((2, 2)),
-        Flatten(),
-        Dense(128, activation="relu"),
-        Dropout(0.5),
-        Dense(1, activation="sigmoid"),  # binary classification
+        base,
+        tf.keras.layers.GlobalAveragePooling2D(),
+        tf.keras.layers.Dense(128, activation="relu"),
+        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dense(1, activation="sigmoid"),
     ]
 )
 
 model.compile(
-    optimizer=Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=["accuracy"]
+    optimizer=tf.keras.optimizers.Adam(1e-4),
+    loss="binary_crossentropy",
+    metrics=["accuracy", tf.keras.metrics.AUC(name="auc")],
 )
 
 model.summary()
 
 # -----------------------
-# TRAIN MODEL
+# TRAIN
 # -----------------------
-history = model.fit(train_gen, validation_data=val_gen, epochs=EPOCHS)
-
-# -----------------------
-# SAVE MODEL
-# -----------------------
-model.save(MODEL_SAVE_PATH)
-print(f"\nModel saved to: {MODEL_SAVE_PATH}")
-
-
-import pandas as pd
-
-csv_path = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\resume_images_labels.csv"
-df = pd.read_csv(csv_path)
-print(df["label"].value_counts())
-
-# -----------------------
-# CLASS WEIGHTS (IMPORTANT)
-# -----------------------
-from sklearn.utils.class_weight import compute_class_weight
-import numpy as np
-
-class_weights = compute_class_weight(
-    class_weight="balanced",
-    classes=np.array([0, 1]),  # 0 = real, 1 = fake
-    y=train_df["label"].map({"real": 0, "fake": 1}).values,
+history = model.fit(
+    train_ds, validation_data=val_ds, epochs=EPOCHS, class_weight=class_weights
 )
 
-class_weight_dict = {0: class_weights[0], 1: class_weights[1]}
-
-print("Class weights:", class_weight_dict)
+# -----------------------
+# SAVE
+# -----------------------
+model.save(MODEL_OUT, overwrite=True)
+print(f"\n✅ MODEL SAVED AT: {MODEL_OUT}")

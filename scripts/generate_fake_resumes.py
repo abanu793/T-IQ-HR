@@ -6,8 +6,10 @@ import random
 
 fake = Faker()
 
-OUTPUT_DIR = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\fake"
-NUM_RESUMES = 500  # 🔥 increase here (500 or 1000)
+# ✅ CORRECT LOCATION (RAW PDFs)
+OUTPUT_DIR = r"C:\Users\abanu\Documents\t_iq_hr\data\raw\resumes\fake"
+
+NUM_RESUMES = 1200  # ✅ RECOMMENDED
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -26,7 +28,7 @@ SKILLS = [
 ]
 
 
-def create_fake_resume(path, idx):
+def create_fake_resume(path):
     c = canvas.Canvas(path, pagesize=A4)
     width, height = A4
 
@@ -69,8 +71,8 @@ def create_fake_resume(path, idx):
     c.save()
 
 
-for i in range(51, 51 + NUM_RESUMES):
+for i in range(1, NUM_RESUMES + 1):
     pdf_path = os.path.join(OUTPUT_DIR, f"FAKE_{i}.pdf")
-    create_fake_resume(pdf_path, i)
+    create_fake_resume(pdf_path)
 
-print(f"[OK] Generated {NUM_RESUMES} fake resume PDFs.")
+print(f"[✅] Generated {NUM_RESUMES} fake resume PDFs")
