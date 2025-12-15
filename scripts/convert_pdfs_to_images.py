@@ -58,7 +58,7 @@ for root, _, files in os.walk(RAW_DIR):
 
         pdf_path = os.path.join(root, file)
 
-        # ✅ LABEL LOGIC (FINAL & SAFE)
+        # LABEL LOGIC (FINAL & SAFE)
         label = "fake" if "fake" in root.lower() or "fake" in file.lower() else "real"
 
         all_rows.extend(convert_pdf(pdf_path, label))
@@ -67,11 +67,11 @@ for root, _, files in os.walk(RAW_DIR):
 # SAVE CSV
 # -----------------------
 if not all_rows:
-    raise RuntimeError("❌ No images generated. Check paths.")
+    raise RuntimeError("No images generated. Check paths.")
 
 df = pd.DataFrame(all_rows)
 df.to_csv(CSV_PATH, index=False)
 
-print("\n✅ DATASET READY")
+print("\n DATASET READY")
 print(df["label"].value_counts())
 print(f"\nCSV saved at: {CSV_PATH}")

@@ -32,7 +32,7 @@ for root, _, files in os.walk(IMAGES_DIR):
             image_files.append(os.path.join(root, f))
 
 if not image_files:
-    raise ValueError("❌ No images found")
+    raise ValueError("No images found")
 
 print(f"[INFO] Found {len(image_files)} images to predict.")
 
@@ -92,14 +92,14 @@ VALUES (%s, %s, %s, %s)
 
 for _, row in df_results.iterrows():
 
-    # 1️⃣ Insert resume
+    # 1️.Insert resume
     cursor.execute(
         insert_resume_sql,
         (row["file_name"], row["file_path"]),
     )
     resume_id = cursor.lastrowid
 
-    # 2️⃣ Insert prediction
+    # 2️.Insert prediction
     cursor.execute(
         insert_prediction_sql,
         (
@@ -114,4 +114,4 @@ conn.commit()
 cursor.close()
 conn.close()
 
-print("✅ All resumes & predictions inserted successfully")
+print("All resumes & predictions inserted successfully")

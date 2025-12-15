@@ -12,7 +12,7 @@ CSV_PATH = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\resum
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 32
 EPOCHS = 10
-MODEL_OUT = r"C:\Users\abanu\Documents\resume_cnn_v2.keras"
+MODEL_OUT = r"C:\Users\abanu\Documents\t_iq_hr\models\resume_cnn_v2"
 
 
 os.makedirs(MODEL_OUT, exist_ok=True)
@@ -100,5 +100,12 @@ history = model.fit(
 # -----------------------
 # SAVE
 # -----------------------
-model.save(MODEL_OUT, overwrite=True)
-print(f"\n✅ MODEL SAVED AT: {MODEL_OUT}")
+import os
+import shutil
+
+if os.path.exists(MODEL_OUT):
+    shutil.rmtree(MODEL_OUT)
+
+model.export(MODEL_OUT)
+
+print(f"[OK] Model exported successfully to {MODEL_OUT}")

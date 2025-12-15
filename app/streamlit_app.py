@@ -1,70 +1,120 @@
+# ======================================================
+# streamlit_app.py
+# ======================================================
+
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import streamlit as st
-import pandas as pd
-import mysql.connector
-from sqlalchemy import create_engine
-
-st.set_page_config(page_title="Resume Authenticity Dashboard", layout="wide")
-st.title("📝 Resume Authenticity Dashboard")
+import joblib
+import pdfplumber
+from db.db_ops import insert_resume, insert_prediction
 
 # -----------------------
-# DB CONNECTION
+# CONFIG
 # -----------------------
-conn = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="aira",  # 🔑 update
-    database="t_iq_hr",
-)
-df = pd.read_sql(
-    "SELECT r.file_name, r.file_path, p.fake_probability, p.predicted_label, p.model_version, p.predicted_at FROM predictions p JOIN resumes r ON p.resume_id = r.resume_id",
-    conn,
-)
-conn.close()
+MODEL_PATH = r"C:\Users\abanu\Documents\t_iq_hr\models\resume_text_classifier.pkl"
+VECT_PATH = r"C:\Users\abanu\Documents\t_iq_hr\models\resume_text_vectorizer.pkl"
+
+UPLOAD_DIR = r"C:\Users\abanu\Documents\t_iq_hr\uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+st.set_page_config(page_title="T-IQ HR Resume Authenticity", layout="centered")
+
 
 # -----------------------
-# FIX LOGIC
+# LOAD MODEL
 # -----------------------
-FAKE_PROB_THRESHOLD = 0.5  # page-level
-FAKE_PAGE_RATIO = 0.5  # resume-level
+@st.cache_resource
+def load_model():
+    model = joblib.load(MODEL_PATH)
+    vectorizer = joblib.load(VECT_PATH)
+    return model, vectorizer
 
-df["real_probability"] = 1 - df["fake_probability"]
-df["is_fake_page"] = df["fake_probability"] >= FAKE_PROB_THRESHOLD
 
-# -----------------------
-# RESUME SUMMARY
-# -----------------------
-summary = (
-    df.groupby("file_name")
-    .agg(
-        total_pages=("file_name", "count"),
-        fake_pages=("is_fake_page", "sum"),
-        max_fake_prob=("fake_probability", "max"),
-    )
-    .reset_index()
-)
+model, vectorizer = load_model()
 
-summary["is_fake_resume"] = (
-    summary["fake_pages"] / summary["total_pages"] >= FAKE_PAGE_RATIO
-)
-
-st.subheader("Resume Summary")
-st.dataframe(summary)
 
 # -----------------------
-# SELECT RESUME
+# TEXT EXTRACTION
 # -----------------------
-selected_resume = st.selectbox("Select Resume", summary["file_name"].tolist())
+def extract_text_from_pdf(file):
+    text = ""
+    try:
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as e:
+        st.error(f"Failed to read PDF: {e}")
+    return text.strip()
 
-if selected_resume:
-    resume_pages = df[df["file_name"] == selected_resume].copy()
-    st.subheader(f"Page-level details: {selected_resume}")
-    st.dataframe(resume_pages[["file_name", "predicted_label", "fake_probability"]])
 
-    final_row = summary[summary["file_name"] == selected_resume].iloc[0]
-    st.markdown(
-        f"**Resume-level verdict:** {'🚨 FAKE' if final_row['is_fake_resume'] else '✅ REAL'}"
-    )
-    st.markdown(f"**Max fake probability:** {final_row['max_fake_prob']:.2f}")
-    st.markdown(
-        f"**Total pages:** {final_row['total_pages']}, Fake pages: {final_row['fake_pages']}"
-    )
+# -----------------------
+# PREDICTION
+# -----------------------
+def predict_resume(text):
+    vec = vectorizer.transform([text])
+    prob_fake = model.predict_proba(vec)[0][1]
+    label = "fake" if prob_fake >= 0.5 else "real"
+    confidence = prob_fake if label == "fake" else (1 - prob_fake)
+    return label, confidence, prob_fake
+
+
+# -----------------------
+# UI
+# -----------------------
+st.title("T-IQ HR — Resume Authenticity Detector")
+st.write("Upload a resume PDF to check whether it is **Real or Fake**")
+
+uploaded_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
+
+if uploaded_file:
+    # Save PDF
+    saved_pdf_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+    with open(saved_pdf_path, "wb") as f:
+        f.write(uploaded_file.read())
+
+    with st.spinner("Extracting text & analyzing..."):
+        text = extract_text_from_pdf(saved_pdf_path)
+
+    if len(text) < 100:
+        st.warning("⚠️ Not enough readable text found in resume.")
+    else:
+        label, confidence, fake_prob = predict_resume(text)
+
+        # -----------------------
+        # SAVE TO DATABASE
+        # -----------------------
+        resume_id = insert_resume(
+            file_name=uploaded_file.name, file_path=saved_pdf_path
+        )
+
+        insert_prediction(
+            resume_id=resume_id,
+            fake_prob=float(fake_prob),
+            label=label,
+            model_version="v1_text",
+        )
+
+        # -----------------------
+        # DISPLAY RESULT
+        # -----------------------
+        st.subheader("Prediction Result")
+
+        if label == "fake":
+            st.error("🚨 **FAKE RESUME DETECTED**")
+        else:
+            st.success("✅ **REAL RESUME**")
+
+        st.metric("Confidence", f"{confidence * 100:.2f}%")
+        st.caption(f"Raw fake probability: {fake_prob:.4f}")
+
+        with st.expander("Extracted Resume Text"):
+            st.text_area("Text", text, height=300)
+
+st.markdown("---")
+st.caption("T-IQ HR | Text-Based ML | MySQL Integrated | Production-Ready")

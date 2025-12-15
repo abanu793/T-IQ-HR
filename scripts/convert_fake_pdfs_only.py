@@ -9,7 +9,7 @@ FAKE_PDF_DIR = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\f
 CSV_PATH = r"C:\Users\abanu\Documents\t_iq_hr\data\processed\resume_images\resume_images_labels.csv"
 
 # Safety check
-assert "fake" in FAKE_PDF_DIR.lower(), "❌ Path is not a fake directory!"
+assert "fake" in FAKE_PDF_DIR.lower(), "Path is not a fake directory!"
 
 # Load existing CSV
 df = pd.read_csv(CSV_PATH)
@@ -41,6 +41,6 @@ for pdf in os.listdir(FAKE_PDF_DIR):
 if new_rows:
     df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
     df.to_csv(CSV_PATH, index=False)
-    print(f"\n✅ Added {len(new_rows)} FAKE images to CSV")
+    print(f"\n Added {len(new_rows)} FAKE images to CSV")
 else:
-    print("\n⚠️ No fake images added")
+    print("\n No fake images added")

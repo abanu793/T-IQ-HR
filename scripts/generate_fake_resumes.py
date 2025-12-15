@@ -6,10 +6,10 @@ import random
 
 fake = Faker()
 
-# ✅ CORRECT LOCATION (RAW PDFs)
+# CORRECT LOCATION (RAW PDFs)
 OUTPUT_DIR = r"C:\Users\abanu\Documents\t_iq_hr\data\raw\resumes\fake"
 
-NUM_RESUMES = 1200  # ✅ RECOMMENDED
+NUM_RESUMES = 1200  # RECOMMENDED
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
